@@ -588,31 +588,123 @@ This explains why both orange and green appear better oriented in V7 than in V5.
 
 This is likely because ICP is fitting a partial visible face of a rectangular object. The model can rotate around an ambiguous direction and still fit the visible surface well.
 
+### V8: Bounded-Rotation ICP
+
+After deciding to treat the ArUco-derived plug pose as ground truth, a bounded-rotation variant was added. The purpose was to keep V7's good translation/surface placement while reducing the large 80 to 90 degree rotation disagreement.
+
+Implementation:
+
+```text
+1. Run full ICP.
+2. Keep the full ICP translation.
+3. Measure the rotation step from the pre-ICP pose to the full ICP pose.
+4. If the step exceeds a limit, clamp the rotation update to that limit.
+5. Save whether rotation was bounded in the output CSV.
+```
+
+The tracker options are:
+
+```text
+--bounded_rotation_deg <degrees>
+--rotation_gate_mode clamp
+```
+
+Example command:
+
+```powershell
+python scripts/run_cluster_assisted_tracker.py ^
+  --bag data/raw/plug_with_tag_1280.bag ^
+  --stl data/raw/plug.STL ^
+  --config config.yaml ^
+  --roi_key cluster_roi_tagged ^
+  --reference_csv outputs/phase2/poses_with_tag_plug.csv ^
+  --out_dir outputs/phase3/cluster_assisted_track_127_170_v8_rot30 ^
+  --start_frame 127 ^
+  --max_frames 44 ^
+  --disable_icp_acceptance ^
+  --bounded_rotation_deg 30 ^
+  --rotation_gate_mode clamp
+```
+
+Rotation caps tested:
+
+```text
+15 deg, 30 deg, 45 deg, 60 deg
+```
+
+Finding:
+
+```text
+Bounded rotation did not solve the ArUco rotation error.
+```
+
+Reason:
+
+```text
+The bad full-ICP rotation is not a one-frame spike.
+It is a persistent surface-fit direction.
+The bounded update only slows the drift, but over several frames the
+orientation still accumulates toward the same wrong ICP orientation.
+```
+
+Therefore, if the evaluation target is strict 6-DoF agreement with the ArUco plug pose, V5 is still better than V7/V8 for orientation.
+
 ## Quantitative Comparison on Tagged Frames 127-170
 
 The comparison uses only frames where the ArUco-derived plug pose is available. This reference is approximate because it depends on the manually tuned `T_marker_plug`.
 
 | Variant | Description | Tracked Frames | Reference Frames | Mean Fitness | Mean RMSE | Mean Translation Error | Mean Rotation Error |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| V5 | pose-gated mask + locked ICP | 44 | 24 | 0.581 | 3.535 mm | 8.08 mm | 16.45 deg |
-| V6 | pose-gated mask + reject ICP | 44 | 24 | 0.471 | 3.556 mm | 10.50 mm | 16.45 deg |
-| V7 | pose-gated mask + unconstrained ICP | 44 | 24 | 0.919 | 3.313 mm | 7.85 mm | 80.83 deg |
+|---|---|---:|---:|---:|---:|---:|---:|
+| V5 | pose-gated mask + locked rotation | 44 | 24 | 0.602 | 3.469 mm | 8.08 mm | 16.45 deg |
+| V6 | pose-gated mask + reject ICP | 44 | 24 | 0.488 | 3.548 mm | 10.50 mm | 16.45 deg |
+| V7 | pose-gated mask + unconstrained ICP | 44 | 24 | 0.934 | 3.292 mm | 7.85 mm | 80.83 deg |
+| V8-15 | bounded rotation, 15 deg/frame | 44 | 24 | 0.923 | 3.318 mm | 7.90 mm | 76.38 deg |
+| V8-30 | bounded rotation, 30 deg/frame | 44 | 24 | 0.927 | 3.309 mm | 7.90 mm | 78.56 deg |
+| V8-45 | bounded rotation, 45 deg/frame | 44 | 24 | 0.929 | 3.300 mm | 7.89 mm | 78.49 deg |
+| V8-60 | bounded rotation, 60 deg/frame | 44 | 24 | 0.930 | 3.295 mm | 7.96 mm | 79.22 deg |
 
 Interpretation:
 
 - V7 is best for visible bbox placement and surface fit.
 - V7 is slightly best in plug-center translation error.
 - V5/V6 agree more with the ArUco orientation, but visually the boxes are less satisfying.
+- V8 did not improve the ArUco rotation error enough to replace V5 for strict 6-DoF evaluation.
 - The ArUco reference is useful, but not perfect ground truth because `T_marker_plug` was manually tuned.
 - The large V7 rotation error likely reflects coordinate-frame ambiguity under partial-depth ICP, not necessarily total failure of bbox placement.
 
-## Current Best Baseline
+The comparison table was generated with:
 
-For the assignment goal of showing how far a classical markerless method can get, the current best practical baseline is:
+```powershell
+python scripts/evaluate_markerless_vs_aruco.py ^
+  --gt_csv outputs/phase2/poses_with_tag_plug.csv ^
+  --pred v5_locked=outputs/phase3/cluster_assisted_track_127_170_v5_pose_gate/poses_cluster_assisted.csv ^
+  --pred v6_init_only=outputs/phase3/cluster_assisted_track_127_170_v6_icp_acceptance/poses_cluster_assisted.csv ^
+  --pred v7_full=outputs/phase3/cluster_assisted_track_127_170_v7_full_rotation/poses_cluster_assisted.csv ^
+  --pred v8_rot15=outputs/phase3/cluster_assisted_track_127_170_v8_rot15/poses_cluster_assisted.csv ^
+  --pred v8_rot30=outputs/phase3/cluster_assisted_track_127_170_v8_rot30/poses_cluster_assisted.csv ^
+  --pred v8_rot45=outputs/phase3/cluster_assisted_track_127_170_v8_rot45/poses_cluster_assisted.csv ^
+  --pred v8_rot60=outputs/phase3/cluster_assisted_track_127_170_v8_rot60/poses_cluster_assisted.csv ^
+  --out_summary_csv outputs/phase3/aruco_eval_summary.csv ^
+  --out_per_frame_csv outputs/phase3/aruco_eval_per_frame.csv
+```
+
+## Current Best Baselines
+
+There are now two useful "best" baselines, depending on the evaluation target.
+
+If the target is visual bbox placement and surface alignment, the best practical baseline is:
 
 ```text
 V7: pose-gated RGB-D clustering + sampled STL + unconstrained point-to-point ICP
 ```
+
+If the target is strict 6-DoF agreement with the ArUco-derived plug pose, the better baseline is:
+
+```text
+V5: pose-gated RGB-D clustering + locked rotation ICP
+```
+
+V5 preserves an orientation closer to the ArUco plug frame, while V7 gives better surface fit and slightly better plug-center translation.
 
 Current output:
 
@@ -620,6 +712,8 @@ Current output:
 outputs/phase3/cluster_assisted_track_127_170_v7_full_rotation/poses_cluster_assisted.csv
 outputs/phase3/cluster_assisted_track_127_170_v7_full_rotation/cluster_assisted_overlay.mp4
 outputs/phase3/cluster_assisted_track_127_170_v7_full_rotation/frames/
+outputs/phase3/cluster_assisted_track_127_170_v5_pose_gate/poses_cluster_assisted.csv
+outputs/phase3/cluster_assisted_track_127_170_v5_pose_gate/cluster_assisted_overlay.mp4
 ```
 
 Open the video:

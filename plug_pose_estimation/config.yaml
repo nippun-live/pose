@@ -80,3 +80,7 @@ markerless:
       max_translation_step_m: 0.004
       min_rmse_improvement_m: 0.0002
       min_fitness_improvement: 0.02
+    rotation_gate:
+      enabled: false
+      mode: clamp
+      max_step_deg: 45.0

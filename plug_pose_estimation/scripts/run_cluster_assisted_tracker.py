@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 import open3d as o3d
 import yaml
+from scipy.spatial.transform import Rotation
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -327,6 +328,32 @@ def choose_icp_pose(init_t, icp_t, init_fitness, init_rmse, icp_fitness, icp_rms
     return icp_t, True, ""
 
 
+def bound_rotation_update(init_t, icp_t, rotation_gate_cfg):
+    if not rotation_gate_cfg.get("enabled", False):
+        return icp_t, rotation_error_deg(init_t, icp_t), False
+
+    max_step_deg = float(rotation_gate_cfg.get("max_step_deg", 180.0))
+    mode = rotation_gate_cfg.get("mode", "clamp")
+    rotation_step = rotation_error_deg(init_t, icp_t)
+    if rotation_step <= max_step_deg:
+        return icp_t, rotation_step, False
+
+    bounded = icp_t.copy()
+    if mode == "keep":
+        bounded[:3, :3] = init_t[:3, :3]
+    elif mode == "clamp":
+        delta = init_t[:3, :3].T @ icp_t[:3, :3]
+        delta_rotvec = Rotation.from_matrix(delta).as_rotvec()
+        delta_angle = float(np.linalg.norm(delta_rotvec))
+        if delta_angle > 1e-12:
+            scale = np.radians(max_step_deg) / delta_angle
+            bounded_rotation = Rotation.from_matrix(init_t[:3, :3]) * Rotation.from_rotvec(delta_rotvec * scale)
+            bounded[:3, :3] = bounded_rotation.as_matrix()
+    else:
+        raise ValueError(f"Unknown rotation gate mode: {mode}")
+    return bounded, rotation_step, True
+
+
 def save_cluster_summary(path: Path, candidates, selected_label) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as handle:
@@ -465,6 +492,8 @@ def main() -> None:
     parser.add_argument("--max_frames", type=int, default=44)
     parser.add_argument("--lock_rotation", action="store_true")
     parser.add_argument("--disable_icp_acceptance", action="store_true")
+    parser.add_argument("--bounded_rotation_deg", type=float)
+    parser.add_argument("--rotation_gate_mode", choices=["clamp", "keep"])
     args = parser.parse_args()
 
     config = yaml.safe_load(args.config.read_text(encoding="utf-8"))
@@ -477,6 +506,13 @@ def main() -> None:
     if args.disable_icp_acceptance:
         icp_cfg = dict(icp_cfg)
         icp_cfg["acceptance"] = {"enabled": False}
+    if args.bounded_rotation_deg is not None:
+        icp_cfg = dict(icp_cfg)
+        icp_cfg["rotation_gate"] = {
+            "enabled": True,
+            "max_step_deg": args.bounded_rotation_deg,
+            "mode": args.rotation_gate_mode or "clamp",
+        }
 
     ref_rows = load_pose_csv(args.reference_csv) if args.reference_csv else {}
     model = load_stl_as_pointcloud(args.stl, icp_cfg["n_model_points"])
@@ -568,6 +604,8 @@ def main() -> None:
                 "icp_fitness_raw": "",
                 "icp_rmse_raw": "",
                 "icp_translation_step_m": "",
+                "icp_rotation_step_deg": "",
+                "rotation_bounded": 0,
                 "icp_accepted": 0,
                 "icp_rejection_reason": "no_cluster",
                 "fitness": "0.000000000",
@@ -633,9 +671,14 @@ def main() -> None:
         raw_icp_t = icp_t.copy()
         raw_icp_fitness = fitness
         raw_icp_rmse = rmse
-        final_t, icp_accepted, rejection_reason = choose_icp_pose(
+        bounded_icp_t, icp_rotation_step, rotation_bounded = bound_rotation_update(
             init_t,
             raw_icp_t,
+            icp_cfg.get("rotation_gate", {}),
+        )
+        final_t, icp_accepted, rejection_reason = choose_icp_pose(
+            init_t,
+            bounded_icp_t,
             init_fitness,
             init_rmse,
             raw_icp_fitness,
@@ -673,6 +716,8 @@ def main() -> None:
             "icp_fitness_raw": f"{raw_icp_fitness:.9f}",
             "icp_rmse_raw": f"{raw_icp_rmse:.9f}",
             "icp_translation_step_m": f"{icp_translation_step:.9f}",
+            "icp_rotation_step_deg": f"{icp_rotation_step:.6f}",
+            "rotation_bounded": int(rotation_bounded),
             "icp_accepted": int(icp_accepted),
             "icp_rejection_reason": rejection_reason,
             "fitness": f"{fitness:.9f}",
@@ -743,6 +788,8 @@ def main() -> None:
         "icp_fitness_raw",
         "icp_rmse_raw",
         "icp_translation_step_m",
+        "icp_rotation_step_deg",
+        "rotation_bounded",
         "icp_accepted",
         "icp_rejection_reason",
         "fitness",
