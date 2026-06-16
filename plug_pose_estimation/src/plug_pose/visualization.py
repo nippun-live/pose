@@ -87,3 +87,48 @@ def draw_projected_bbox(
     for start, end in edges:
         cv2.line(output_bgr, tuple(points[start]), tuple(points[end]), color, thickness, cv2.LINE_AA)
     return output_bgr
+
+
+def draw_projected_wireframe(
+    image_rgb: np.ndarray,
+    intrinsics: dict,
+    rvec: np.ndarray,
+    tvec: np.ndarray,
+    vertices: np.ndarray,
+    edges: np.ndarray,
+    color: tuple[int, int, int] = (0, 255, 0),
+    thickness: int = 1,
+) -> np.ndarray:
+    output_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
+    camera_matrix = intrinsics_to_camera_matrix(intrinsics)
+    dist_coeffs = intrinsics_to_dist_coeffs(intrinsics)
+
+    points_2d, _ = cv2.projectPoints(
+        np.asarray(vertices, dtype=np.float32),
+        rvec,
+        tvec,
+        camera_matrix,
+        dist_coeffs,
+    )
+    points_2d = np.round(points_2d.reshape(-1, 2)).astype(np.int32)
+
+    rotation, _ = cv2.Rodrigues(rvec)
+    camera_points = (rotation @ np.asarray(vertices, dtype=np.float64).T).T + np.asarray(tvec, dtype=np.float64).reshape(1, 3)
+    valid_depth = camera_points[:, 2] > 0.01
+
+    height, width = image_rgb.shape[:2]
+    margin = max(width, height) * 2
+    for start, end in np.asarray(edges, dtype=np.int32):
+        if not (valid_depth[start] and valid_depth[end]):
+            continue
+        p0 = points_2d[start]
+        p1 = points_2d[end]
+        if (
+            min(p0[0], p1[0]) < -margin
+            or max(p0[0], p1[0]) > width + margin
+            or min(p0[1], p1[1]) < -margin
+            or max(p0[1], p1[1]) > height + margin
+        ):
+            continue
+        cv2.line(output_bgr, tuple(p0), tuple(p1), color, thickness, cv2.LINE_AA)
+    return output_bgr

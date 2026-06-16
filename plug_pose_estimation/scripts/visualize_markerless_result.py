@@ -11,9 +11,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from plug_pose.bag_reader import get_color_intrinsics, iter_aligned_frames, start_playback  # noqa: E402
-from plug_pose.project_mesh import get_projectable_stl_bbox_extent  # noqa: E402
+from plug_pose.project_mesh import get_projectable_stl_bbox_extent, get_projectable_stl_wireframe  # noqa: E402
 from plug_pose.transforms import matrix_to_rvec_tvec, pose_quat_xyzw_to_matrix  # noqa: E402
-from plug_pose.visualization import draw_pose_axes, draw_projected_bbox  # noqa: E402
+from plug_pose.visualization import draw_pose_axes, draw_projected_bbox, draw_projected_wireframe  # noqa: E402
 
 
 def load_pose_csv(path: Path) -> dict[int, dict[str, str]]:
@@ -28,10 +28,13 @@ def main() -> None:
     parser.add_argument("--stl", type=Path, required=True)
     parser.add_argument("--out_video", type=Path, required=True)
     parser.add_argument("--max_frames", type=int)
+    parser.add_argument("--overlay", choices=["bbox", "mesh", "both"], default="bbox")
+    parser.add_argument("--mesh_max_triangles", type=int, default=500)
     args = parser.parse_args()
 
     poses = load_pose_csv(args.poses)
     bbox_extent = get_projectable_stl_bbox_extent(args.stl)
+    mesh_vertices, mesh_edges = get_projectable_stl_wireframe(args.stl, args.mesh_max_triangles)
 
     pipeline, profile = start_playback(args.bag)
     try:
@@ -54,9 +57,23 @@ def main() -> None:
                 [float(pose["qx"]), float(pose["qy"]), float(pose["qz"]), float(pose["qw"])],
             )
             rvec, tvec = matrix_to_rvec_tvec(transform)
-            bbox_bgr = draw_projected_bbox(frame.color_rgb, intrinsics, rvec, tvec, bbox_extent)
-            bbox_rgb = cv2.cvtColor(bbox_bgr, cv2.COLOR_BGR2RGB)
-            output_bgr = draw_pose_axes(bbox_rgb, intrinsics, rvec, tvec, 0.02)
+            overlay_rgb = frame.color_rgb
+            if args.overlay in {"bbox", "both"}:
+                bbox_bgr = draw_projected_bbox(overlay_rgb, intrinsics, rvec, tvec, bbox_extent, color=(0, 165, 255))
+                overlay_rgb = cv2.cvtColor(bbox_bgr, cv2.COLOR_BGR2RGB)
+            if args.overlay in {"mesh", "both"}:
+                mesh_bgr = draw_projected_wireframe(
+                    overlay_rgb,
+                    intrinsics,
+                    rvec,
+                    tvec,
+                    mesh_vertices,
+                    mesh_edges,
+                    color=(0, 255, 0),
+                    thickness=1,
+                )
+                overlay_rgb = cv2.cvtColor(mesh_bgr, cv2.COLOR_BGR2RGB)
+            output_bgr = draw_pose_axes(overlay_rgb, intrinsics, rvec, tvec, 0.02)
             drawn += 1
 
         if writer is None:
