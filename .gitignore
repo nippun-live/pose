@@ -1,0 +1,30 @@
+# Python/local environment
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Editor/local settings
+.vscode/
+.idea/
+
+# RealSense data and extracted/generated artifacts
+plug_pose_estimation/data/raw/
+plug_pose_estimation/data/extracted/
+plug_pose_estimation/outputs/
+plug_pose_estimation/tools/*.exe
+
+# Large generated files that should stay local unless explicitly curated
+*.bag
+*.npy
+*.ply
+*.mp4
+*.avi
+*.mov
+
+# OS files
+Thumbs.db
+.DS_Store

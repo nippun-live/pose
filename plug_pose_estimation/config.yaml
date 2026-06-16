@@ -1,0 +1,82 @@
+marker_to_plug:
+  # Provisional transform from the ArUco marker frame to the plug frame.
+  # Assumption: plug origin is the STL bounding-box center.
+  # The marker is on the lower end of the hanging plug, so the center is above
+  # the marker along the marker's vertical axis, not sideways along marker X.
+  # ArUco pose starts at the marker center; because the full marker is pasted
+  # on the plug end, subtract half the 11 mm marker length from the plug half-length.
+  # The STL long axis is plug +X. Rotate plug +X onto marker -Y so the long
+  # bounding-box dimension runs vertically through the hanging plug.
+  # Marker +Z/blue points out toward the camera; the plug body is behind the
+  # marker plane, so shift the plug center by half the STL thickness along -Z.
+  # Tune the sign/rotation after visually checking outputs/phase2/with_tag_plug_overlay.mp4.
+  translation_m: [0.0, -0.020725, -0.007345]
+  rotation_rpy_deg: [0.0, 0.0, -90.0]
+
+markerless:
+  tagged_bag: data/raw/plug_with_tag_1280.bag
+  without_tag_bag: data/raw/plug_without_tag_1280.bag
+  stl: data/raw/plug.STL
+
+  roi_tagged:
+    x_min: 610
+    y_min: 0
+    x_max: 780
+    y_max: 440
+
+  cluster_roi_tagged:
+    x_min: 300
+    y_min: 0
+    x_max: 980
+    y_max: 460
+
+  roi_without_tag:
+    x_min: 600
+    y_min: 0
+    x_max: 760
+    y_max: 390
+
+  cluster_roi_without_tag:
+    x_min: 300
+    y_min: 0
+    x_max: 980
+    y_max: 460
+
+  depth:
+    min_m: 0.05
+    max_m: 0.45
+
+  clustering:
+    dbscan_eps_m: 0.006
+    dbscan_min_points: 40
+    min_cluster_points: 150
+    min_long_extent_m: 0.04
+    max_long_extent_m: 0.09
+    reject_long_extent_m: 0.085
+    reject_mid_extent_m: 0.045
+    reject_short_extent_m: 0.040
+    pose_gate_margin_m: 0.012
+    pose_gate_min_points: 120
+    temporal_max_distance_m: 0.04
+    temporal_weight: 4.0
+    previous_mask_dilate_px: 35
+    previous_mask_overlap_min: 0.0
+    previous_mask_overlap_weight: 1.0
+    orientation_mode: previous_after_first
+    color_filter:
+      enabled: true
+      saturation_max: 95
+      value_min: 65
+
+  icp:
+    n_model_points: 5000
+    voxel_size_m: 0.0015
+    max_correspondence_m: 0.006
+    max_iterations: 50
+    pose_gate_margin_m: 0.012
+    lock_rotation: true
+    acceptance:
+      enabled: true
+      max_translation_step_m: 0.004
+      min_rmse_improvement_m: 0.0002
+      min_fitness_improvement: 0.02
