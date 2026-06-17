@@ -688,6 +688,104 @@ python scripts/evaluate_markerless_vs_aruco.py ^
   --out_per_frame_csv outputs/phase3/aruco_eval_per_frame.csv
 ```
 
+## Full Tagged-Video Check of the V7 Correction
+
+The first V7 correction result was based only on frames 127 to 170. To test whether this was a stable systematic offset over the longer tagged sequence, V7 was rerun from frame 127 to the end of the tagged bag:
+
+```powershell
+python scripts/run_cluster_assisted_tracker.py ^
+  --bag data/raw/plug_with_tag_1280.bag ^
+  --stl data/raw/plug.STL ^
+  --config config.yaml ^
+  --roi_key cluster_roi_tagged ^
+  --reference_csv outputs/phase2/poses_with_tag_plug.csv ^
+  --out_dir outputs/phase3/cluster_assisted_track_127_end_v7_full_rotation ^
+  --start_frame 127 ^
+  --max_frames 228 ^
+  --disable_icp_acceptance
+```
+
+This produced 228 markerless tracked frames, with 139 frames overlapping ArUco detections.
+
+A new script was added to fit and apply a fixed local correction:
+
+```text
+scripts/calibrate_pose_correction.py
+```
+
+The correction trained on the original reliable window, frames 127 to 170, was:
+
+```text
+rotation euler xyz = [-80.532 deg, -1.450 deg, 0.251 deg]
+translation = [1.65 mm, -6.47 mm, -0.66 mm]
+```
+
+Command:
+
+```powershell
+python scripts/calibrate_pose_correction.py ^
+  --gt_csv outputs/phase2/poses_with_tag_plug.csv ^
+  --pred_csv outputs/phase3/cluster_assisted_track_127_end_v7_full_rotation/poses_cluster_assisted.csv ^
+  --train_start 127 ^
+  --train_end 170 ^
+  --out_csv outputs/phase3/cluster_assisted_track_127_end_v7_corrected_from_127_170.csv ^
+  --out_summary_csv outputs/phase3/v7_full_correction_from_127_170_summary.csv ^
+  --eval_range early:127-170 ^
+  --eval_range mid1:171-197 ^
+  --eval_range mid2:198-221 ^
+  --eval_range mid3:222-260 ^
+  --eval_range late:261-354 ^
+  --eval_range all:127-354
+```
+
+Results using the frames 127 to 170 correction:
+
+| Range | Raw Translation | Raw Rotation | Corrected Translation | Corrected Rotation |
+|---|---:|---:|---:|---:|
+| 127-170 | 7.88 mm | 80.55 deg | 3.36 mm | 4.54 deg |
+| 171-197 | 9.17 mm | 98.43 deg | 5.12 mm | 18.90 deg |
+| 198-221 | 27.67 mm | 86.51 deg | 28.01 mm | 11.82 deg |
+| 222-260 | 9.55 mm | 88.70 deg | 4.00 mm | 9.30 deg |
+| 261-354 | 70.74 mm | 31.57 deg | 68.66 mm | 95.16 deg |
+| 127-354 overall | 28.35 mm | 73.35 deg | 25.09 mm | 33.32 deg |
+
+Interpretation:
+
+```text
+The fixed local correction is real and useful, but it is not valid for the entire long run because the markerless tracker loses or changes state later in the video.
+```
+
+Specifically:
+
+- Frames 127-170 confirm the original result very strongly.
+- Frames 171-197 are partially improved, but rotation error grows.
+- Frames 198-221 keep improved rotation but have poor translation, indicating position drift rather than just frame-offset error.
+- Frames 222-260 again improve well, suggesting tracking recovers or enters a similar local frame.
+- Frames 261-354 are not explained by the same correction. The tracker is likely no longer following the same plug pose reliably.
+
+An all-frame correction was also tested. It did not solve the problem:
+
+```text
+all-frame correction rotation euler xyz = [-69.840 deg, 0.983 deg, 1.766 deg]
+overall corrected translation = 28.61 mm
+overall corrected rotation = 37.46 deg
+```
+
+This is worse than the early-window correction where tracking is stable. Therefore, the full-video result should not be described as one global systematic offset. A better description is:
+
+```text
+V7 has a stable local-frame offset during good tracking segments.
+When tracking drifts or locks onto a different surface/state, a single correction cannot fix the whole sequence.
+```
+
+Practical next step:
+
+```text
+Use ArUco validation to detect good tracking segments and either:
+1. report segment-level performance, or
+2. add reinitialization/keyframes so the tracker does not drift into a different local state.
+```
+
 ## Current Best Baselines
 
 There are now two useful "best" baselines, depending on the evaluation target.
