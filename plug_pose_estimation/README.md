@@ -181,3 +181,79 @@ previous selected mask -> dilate mask -> prefer clusters overlapping that dilate
 ```
 
 Dilating a mask means expanding the white/selected pixels outward by a fixed pixel radius. This makes the previous-frame mask tolerant to normal motion between adjacent frames while still preserving the idea of "stay on the same object surface." The tracker also keeps the previous pose orientation after the first frame and uses the new cluster mainly to update translation and the observed ICP cloud.
+
+## Final Markerless Pipeline
+
+The final tagged-video markerless baseline uses:
+
+```text
+SAM2 mask -> masked depth point cloud -> centered STL point cloud -> multiscale point-to-point ICP -> fixed pose-frame correction
+```
+
+SAM2 is used only for object masking. The pose still comes from RGB-D geometry and STL alignment. For each masked depth pixel `(u, v)`:
+
+```text
+Z = raw_depth * depth_scale
+X = (u - cx) * Z / fx
+Y = (v - cy) * Z / fy
+```
+
+The STL is centered at its bounding-box center before sampling, so the model point cloud and output pose use the plug center as the object frame. Multiscale point-to-point ICP runs coarse-to-fine with voxel/correspondence stages of roughly 5 mm / 15 mm, 3 mm / 9 mm, and 1.5 mm / 6 mm.
+
+Run the final SAM2 + ICP tracker with a mask map:
+
+```powershell
+python scripts/run_sam2_icp.py ^
+  --bag data/raw/plug_with_tag_1280.bag ^
+  --mask_map outputs/phase4/run1/segmentation_masks/mask_map.json ^
+  --stl data/raw/plug.STL ^
+  --config config.yaml ^
+  --reference_csv outputs/phase2/poses_with_tag_plug.csv ^
+  --icp_method multiscale_point_to_point ^
+  --out_dir outputs/phase4/run1/multiscale_p2p_icp
+```
+
+The raw multiscale ICP pose had a large systematic orientation mismatch relative to the ArUco plug frame. A single fixed correction transform was learned from a random 60 percent split of ArUco-visible frames and validated on the held-out 40 percent:
+
+```text
+C_i = inverse(T_camera_plug_icp_i) @ T_camera_plug_aruco_i
+T_camera_plug_corrected_i = T_camera_plug_icp_i @ average(C_i)
+```
+
+Final tagged validation for multiscale P2P with the random60 correction:
+
+```text
+validation translation error: 4.40 mm mean
+validation rotation error: 11.98 deg mean
+```
+
+Final tagged videos:
+
+```text
+outputs/phase4/run2/final_tag_videos/multiscale_p2p_raw_vs_aruco_bbox_pose.mp4
+outputs/phase4/run2/final_tag_videos/multiscale_p2p_corrected_random60_vs_aruco_bbox_pose.mp4
+```
+
+## Untagged Video
+
+The untagged sequence uses the same validated markerless pipeline and reuses the fixed random60 correction learned from the tagged sequence. Since there is no ArUco reference in the untagged video, the result is judged by mask overlays, depth diagnostics, projected bbox videos, ICP fitness/RMSE, and visual tracking consistency.
+
+Final untagged output:
+
+```text
+outputs/phase4/run6_untagged_final_run4_source/videos/run6_run4_corrected_random60_seed42_imagefallback_bbox_pose.mp4
+```
+
+Some untagged spans had good SAM masks but incomplete depth. For those short spans, a bounded image-mask silhouette fallback was applied to improve projected bbox/mask overlap while keeping the main pose pipeline depth/STL/ICP-based.
+
+## Technical Notes
+
+For implementation details useful in a viva or code walkthrough, see:
+
+```text
+TECHNICAL_VIVA_NOTES.md
+EXPERIMENT_LOG.md
+PRESENTATION_DECK_SOURCE.md
+```
+
+These notes are intentionally kept out of the committed source snapshot except for this README update.

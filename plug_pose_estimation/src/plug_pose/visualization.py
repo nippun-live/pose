@@ -62,6 +62,12 @@ def draw_projected_bbox(
         ],
         dtype=np.float32,
     )
+    rotation, _ = cv2.Rodrigues(rvec)
+    camera_points = (rotation @ corners.astype(np.float64).T).T + np.asarray(tvec, dtype=np.float64).reshape(1, 3)
+    valid_depth = np.isfinite(camera_points).all(axis=1) & (camera_points[:, 2] > 0.01)
+    if not np.any(valid_depth):
+        return output_bgr
+
     points, _ = cv2.projectPoints(
         corners,
         rvec,
@@ -69,7 +75,14 @@ def draw_projected_bbox(
         intrinsics_to_camera_matrix(intrinsics),
         intrinsics_to_dist_coeffs(intrinsics),
     )
-    points = np.round(points.reshape(-1, 2)).astype(int)
+    points = points.reshape(-1, 2)
+    if not np.isfinite(points).all():
+        return output_bgr
+    height, width = image_rgb.shape[:2]
+    margin = max(width, height) * 2
+    if np.any(np.abs(points) > margin * 2):
+        return output_bgr
+    points = np.round(points).astype(np.int32)
     edges = [
         (0, 1),
         (1, 2),
@@ -85,7 +98,18 @@ def draw_projected_bbox(
         (3, 7),
     ]
     for start, end in edges:
-        cv2.line(output_bgr, tuple(points[start]), tuple(points[end]), color, thickness, cv2.LINE_AA)
+        if not (valid_depth[start] and valid_depth[end]):
+            continue
+        p0 = points[start]
+        p1 = points[end]
+        if (
+            min(p0[0], p1[0]) < -margin
+            or max(p0[0], p1[0]) > width + margin
+            or min(p0[1], p1[1]) < -margin
+            or max(p0[1], p1[1]) > height + margin
+        ):
+            continue
+        cv2.line(output_bgr, (int(p0[0]), int(p0[1])), (int(p1[0]), int(p1[1])), color, thickness, cv2.LINE_AA)
     return output_bgr
 
 

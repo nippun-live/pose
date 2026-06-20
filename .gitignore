@@ -16,6 +16,7 @@ plug_pose_estimation/data/raw/
 plug_pose_estimation/data/extracted/
 plug_pose_estimation/outputs/
 plug_pose_estimation/tools/*.exe
+plug_pose_estimation/third_party/
 
 # Large generated files that should stay local unless explicitly curated
 *.bag

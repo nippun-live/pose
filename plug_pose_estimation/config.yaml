@@ -53,16 +53,29 @@ markerless:
     min_long_extent_m: 0.04
     max_long_extent_m: 0.09
     reject_long_extent_m: 0.085
-    reject_mid_extent_m: 0.045
+    reject_mid_extent_m: 0.055
     reject_short_extent_m: 0.040
     pose_gate_margin_m: 0.012
     pose_gate_min_points: 120
+    pose_gate_overlap_weight: 2.0
     temporal_max_distance_m: 0.04
     temporal_weight: 4.0
+    temporal_hard_filter: false
     previous_mask_dilate_px: 35
     previous_mask_overlap_min: 0.0
-    previous_mask_overlap_weight: 1.0
+    previous_mask_overlap_weight: 0.25
+    previous_mask_hard_filter: false
     orientation_mode: previous_after_first
+    shape_recovery:
+      enabled: true
+      min_points: 1500
+      min_long_extent_m: 0.035
+      max_long_extent_m: 0.075
+      max_mid_extent_m: 0.052
+      max_short_extent_m: 0.018
+      suspect_long_extent_m: 0.070
+      suspect_mid_extent_m: 0.030
+      suspect_short_extent_m: 0.022
     color_filter:
       enabled: true
       saturation_max: 95
