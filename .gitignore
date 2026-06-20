@@ -12,13 +12,16 @@ venv/
 .idea/
 
 # RealSense data and extracted/generated artifacts
-plug_pose_estimation/data/raw/
-plug_pose_estimation/data/extracted/
-plug_pose_estimation/outputs/
-plug_pose_estimation/tools/*.exe
-plug_pose_estimation/third_party/
-plug_pose_estimation/scripts/archive/
-plug_pose_estimation/presentation_assets/
+data/raw/
+data/extracted/
+outputs/
+tools/*.exe
+third_party/
+scripts/archive/
+presentation_assets/
+
+# Local project notes
+EXPERIMENT_LOG.md
 
 # Large generated files that should stay local unless explicitly curated
 *.bag

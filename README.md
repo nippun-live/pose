@@ -65,7 +65,6 @@ scripts/
   apply_pose_correction.py
   evaluate_pose.py
   render_pose_video.py
-  refine_silhouette_fallback.py
 ```
 
 Older exploratory scripts are preserved in:
@@ -284,20 +283,3 @@ python scripts/render_pose_video.py ^
   --stl data/raw/plug.STL ^
   --out_video outputs/phase4/run4_untagged_icp/videos/multiscale_p2p_corrected_random60_bbox_pose.mp4
 ```
-
-## Optional Silhouette Fallback
-
-For short untagged spans where SAM masks were good but depth was incomplete, a bounded 2D silhouette refinement can be applied:
-
-```powershell
-python scripts/refine_silhouette_fallback.py ^
-  --bag data/raw/plug_without_tag_1280.bag ^
-  --poses outputs/phase4/run4_untagged_icp/multiscale_p2p_icp/poses_multiscale_p2p_corrected_random60_seed42.csv ^
-  --mask_map outputs/phase4/run3_untagged_sam/segmentation_masks/mask_map.json ^
-  --stl data/raw/plug.STL ^
-  --frames 86-96 124-143 ^
-  --out_csv outputs/phase4/run6_untagged_final_run4_source/poses/poses_corrected_random60_seed42_imagefallback.csv ^
-  --out_dir outputs/phase4/run6_untagged_final_run4_source/image_fallback
-```
-
-This is an explicit fallback for bad-depth intervals, not the main pose estimator.
