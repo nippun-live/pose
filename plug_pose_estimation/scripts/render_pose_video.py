@@ -101,12 +101,12 @@ def draw_center_marker(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Render two pose CSVs as bbox + pose-axis comparison video.")
+    parser = argparse.ArgumentParser(description="Render one or two pose CSVs as bbox + pose-axis video.")
     parser.add_argument("--bag", type=Path, required=True)
     parser.add_argument("--pose_a", type=Path, required=True)
-    parser.add_argument("--pose_b", type=Path, required=True)
-    parser.add_argument("--label_a", default="visible-STL corrected")
-    parser.add_argument("--label_b", default="ArUco reference")
+    parser.add_argument("--pose_b", type=Path)
+    parser.add_argument("--label_a", default="pose A")
+    parser.add_argument("--label_b", default="pose B")
     parser.add_argument("--stl", type=Path, required=True)
     parser.add_argument("--out_video", type=Path, required=True)
     parser.add_argument("--start_frame", type=int, default=0)
@@ -115,7 +115,7 @@ def main() -> None:
     args = parser.parse_args()
 
     poses_a = load_pose_csv(args.pose_a)
-    poses_b = load_pose_csv(args.pose_b)
+    poses_b = load_pose_csv(args.pose_b) if args.pose_b else {}
     bbox_extent = get_projectable_stl_bbox_extent(args.stl)
 
     pipeline, profile = start_playback(args.bag)
@@ -171,7 +171,9 @@ def main() -> None:
         if center_a is not None and center_b is not None:
             cv2.line(image_bgr, center_a, center_b, (255, 255, 255), 1, cv2.LINE_AA)
 
-        text = f"green: {args.label_a}   magenta: {args.label_b}"
+        text = f"green: {args.label_a}"
+        if args.pose_b:
+            text += f"   magenta: {args.label_b}"
         cv2.putText(image_bgr, text, (18, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.72, (0, 0, 0), 4, cv2.LINE_AA)
         cv2.putText(image_bgr, text, (18, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.72, (255, 255, 255), 2, cv2.LINE_AA)
 

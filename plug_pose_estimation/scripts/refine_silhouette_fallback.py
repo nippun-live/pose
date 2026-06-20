@@ -196,7 +196,7 @@ def write_pose_csv(path: Path, rows: list[dict[str, str]]) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Repair selected pose frames using 2D SAM-mask silhouette overlap.")
+    parser = argparse.ArgumentParser(description="Repair selected pose frames using bounded 2D bbox/SAM-mask silhouette overlap.")
     parser.add_argument("--bag", type=Path, required=True)
     parser.add_argument("--poses", type=Path, required=True)
     parser.add_argument("--mask_map", type=Path, required=True)
@@ -213,7 +213,8 @@ def main() -> None:
     target_frames = parse_ranges(args.frames)
     rows, row_by_frame = load_pose_rows(args.poses)
     mask_paths = load_mask_map(args.mask_map)
-    corners = bbox_corners(get_projectable_stl_bbox_extent(args.stl))
+    stl_extent = get_projectable_stl_bbox_extent(args.stl)
+    corners = bbox_corners(stl_extent)
 
     pipeline, profile = start_playback(args.bag)
     try:
@@ -281,7 +282,7 @@ def main() -> None:
             intrinsics,
             base_rvec,
             base_tvec,
-            get_projectable_stl_bbox_extent(args.stl),
+            stl_extent,
             color=(0, 165, 255),
             thickness=2,
         )
@@ -291,7 +292,7 @@ def main() -> None:
             intrinsics,
             refined_rvec,
             refined_tvec,
-            get_projectable_stl_bbox_extent(args.stl),
+            stl_extent,
             color=(0, 255, 0),
             thickness=2,
         )

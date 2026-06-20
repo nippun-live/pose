@@ -93,10 +93,6 @@ def summarize_run(name: str, pred_path: Path, gt_rows: dict[int, dict[str, str]]
                 "rotation_error_deg": f"{rot_error:.6f}",
                 "fitness": row.get("fitness", ""),
                 "rmse_m": row.get("rmse", ""),
-                "icp_translation_step_m": row.get("icp_translation_step_m", ""),
-                "icp_rotation_step_deg": row.get("icp_rotation_step_deg", ""),
-                "rotation_bounded": row.get("rotation_bounded", ""),
-                "icp_accepted": row.get("icp_accepted", ""),
             }
         )
 

@@ -8,7 +8,6 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-import torch
 
 
 def add_sam2_to_path(sam2_repo: Path) -> None:
@@ -96,6 +95,8 @@ def main() -> None:
     overlay_dir = args.out_dir / "overlays"
     mask_dir.mkdir(parents=True, exist_ok=True)
     overlay_dir.mkdir(parents=True, exist_ok=True)
+
+    import torch  # noqa: PLC0415
 
     device = args.device
     if device == "cuda" and not torch.cuda.is_available():

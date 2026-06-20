@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import random
 import sys
 from pathlib import Path
 
@@ -142,14 +143,29 @@ def write_rows(path: Path, rows: list[dict[str, str]]) -> None:
         writer.writerows(rows)
 
 
+def write_frame_list(path: Path, frames: list[int]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["frame_id"])
+        writer.writeheader()
+        for frame_id in frames:
+            writer.writerow({"frame_id": frame_id})
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Fit and apply a fixed local correction from markerless poses to ArUco poses.")
+    parser = argparse.ArgumentParser(description="Fit one fixed local correction from markerless poses to ArUco poses.")
     parser.add_argument("--gt_csv", type=Path, required=True)
     parser.add_argument("--pred_csv", type=Path, required=True)
-    parser.add_argument("--train_start", type=int)
-    parser.add_argument("--train_end", type=int)
     parser.add_argument("--out_csv", type=Path, required=True)
-    parser.add_argument("--out_summary_csv", type=Path)
+    parser.add_argument("--out_summary_csv", type=Path, required=True)
+    parser.add_argument("--out_train_frames_csv", type=Path)
+    parser.add_argument("--out_validation_frames_csv", type=Path)
+    parser.add_argument("--split_mode", choices=["all", "range", "alternate", "random"], default="random")
+    parser.add_argument("--train_start", type=int, help="First train frame for --split_mode range.")
+    parser.add_argument("--train_end", type=int, help="Last train frame for --split_mode range.")
+    parser.add_argument("--train_offset", type=int, choices=[0, 1], default=0, help="Alternate split parity.")
+    parser.add_argument("--train_fraction", type=float, default=0.6, help="Random split train fraction.")
+    parser.add_argument("--seed", type=int, default=42, help="Random split seed.")
     parser.add_argument(
         "--eval_range",
         action="append",
@@ -165,11 +181,28 @@ def main() -> None:
     if not matched_frames:
         raise RuntimeError("No matched detected frames between GT and prediction CSVs.")
 
-    train_frames = matched_frames
-    if args.train_start is not None or args.train_end is not None:
+    if args.split_mode == "all":
+        train_frames = matched_frames
+        validation_frames: list[int] = []
+    elif args.split_mode == "range":
         start = args.train_start if args.train_start is not None else matched_frames[0]
         end = args.train_end if args.train_end is not None else matched_frames[-1]
         train_frames = [frame for frame in matched_frames if start <= frame <= end]
+        validation_frames = [frame for frame in matched_frames if frame not in set(train_frames)]
+    elif args.split_mode == "alternate":
+        train_frames = matched_frames[args.train_offset :: 2]
+        validation_frames = matched_frames[1 - args.train_offset :: 2]
+    else:
+        if not 0.0 < args.train_fraction < 1.0:
+            raise RuntimeError("--train_fraction must be between 0 and 1.")
+        rng = random.Random(args.seed)
+        shuffled = list(matched_frames)
+        rng.shuffle(shuffled)
+        train_count = int(round(len(shuffled) * args.train_fraction))
+        train_count = min(max(train_count, 1), len(shuffled) - 1)
+        train_frames = sorted(shuffled[:train_count])
+        validation_frames = sorted(shuffled[train_count:])
+
     if not train_frames:
         raise RuntimeError("No training frames selected for correction calibration.")
 
@@ -178,7 +211,11 @@ def main() -> None:
     write_rows(args.out_csv, corrected_rows)
 
     corrected_by_frame = detected_pose_rows(corrected_rows)
-    ranges = parse_ranges(args.eval_range, matched_frames)
+    if validation_frames:
+        ranges = parse_ranges(args.eval_range, matched_frames) if args.eval_range else []
+        ranges = [("train", train_frames), ("validation", validation_frames), ("all_matched", matched_frames)] + ranges
+    else:
+        ranges = parse_ranges(args.eval_range, matched_frames)
     summaries = []
     for label, frames in ranges:
         raw = evaluate_frames(gt_by_frame, pred_by_frame, frames)
@@ -187,8 +224,12 @@ def main() -> None:
             row = {
                 "range": label,
                 "kind": kind,
+                "split_mode": args.split_mode,
+                "train_count": str(len(train_frames)),
                 "train_start": str(train_frames[0]),
                 "train_end": str(train_frames[-1]),
+                "train_fraction": f"{args.train_fraction:.6f}" if args.split_mode == "random" else "",
+                "seed": str(args.seed) if args.split_mode == "random" else "",
                 "correction_euler_xyz_deg": " ".join(f"{v:.6f}" for v in Rotation.from_matrix(correction[:3, :3]).as_euler("xyz", degrees=True)),
                 "correction_translation_m": " ".join(f"{v:.9f}" for v in correction[:3, 3]),
             }
@@ -207,6 +248,10 @@ def main() -> None:
         )
     if args.out_summary_csv:
         write_rows(args.out_summary_csv, summaries)
+    if args.out_train_frames_csv:
+        write_frame_list(args.out_train_frames_csv, train_frames)
+    if args.out_validation_frames_csv and validation_frames:
+        write_frame_list(args.out_validation_frames_csv, validation_frames)
 
 
 if __name__ == "__main__":
